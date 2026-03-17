@@ -45,8 +45,8 @@ jobs:
           - x86
           - x86_64
         include:
-          - meta_branch: "1.12"
-            sm_branch: "1.13"
+          - meta_branch: "1.12-dev"
+            sm_branch: "1.13-dev"
             spcomp_version: "1.12.0"
 
           - os: ubuntu-22.04
@@ -170,7 +170,7 @@ jobs:
             --targets ${{ matrix.target_arch }}
           ambuild
 
-      # ✅ CRITICAL FIX (your error source)
+      # ✅ FIX: prevents missing tf2.items.nosoop.txt crash
       - name: Ensure gamedata exists
         shell: bash
         working-directory: src/build
