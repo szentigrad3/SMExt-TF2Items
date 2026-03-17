@@ -158,32 +158,28 @@ jobs:
           path: src
 
       # ✅ your fix (unchanged)
-      - name: Ensure gamedata files exist
-        working-directory: src
-        shell: bash
-        run: |
-          echo "[+] Ensuring gamedata files exist..."
+- name: Ensure gamedata files exist
+  working-directory: src
+  shell: bash
+  run: |
+    echo "[+] Ensuring gamedata files exist..."
 
-          mkdir -p src
+    mkdir -p src
 
-          [ -f tf2.items.nosoop.txt ] && cp tf2.items.nosoop.txt src/tf2.items.nosoop.txt
-          [ -f tf2.items.txt ] && cp tf2.items.txt src/tf2.items.txt
+    [ -f tf2.items.nosoop.txt ] && cp tf2.items.nosoop.txt src/tf2.items.nosoop.txt
+    [ -f tf2.items.txt ] && cp tf2.items.txt src/tf2.items.txt
 
-          if [ ! -f src/tf2.items.nosoop.txt ]; then
-            cat << 'EOF' > src/tf2.items.nosoop.txt
-"Games"
-{
-}
-EOF
-          fi
+    if [ ! -f src/tf2.items.nosoop.txt ]; then
+      echo '"Games"' > src/tf2.items.nosoop.txt
+      echo '{' >> src/tf2.items.nosoop.txt
+      echo '}' >> src/tf2.items.nosoop.txt
+    fi
 
-          if [ ! -f src/tf2.items.txt ]; then
-            cat << 'EOF' > src/tf2.items.txt
-"TF2Items"
-{
-}
-EOF
-          fi
+    if [ ! -f src/tf2.items.txt ]; then
+      echo '"TF2Items"' > src/tf2.items.txt
+      echo '{' >> src/tf2.items.txt
+      echo '}' >> src/tf2.items.txt
+    fi
 
       - name: Build Files
         working-directory: src
