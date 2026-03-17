@@ -9,84 +9,132 @@ jobs:
   create_release:
     name: Create release
     runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[ci skip]')"
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
 
     steps:
-      - run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - name: Get short SHA
+        run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - id: create_release
+      - name: Create release
+        id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: r${{ github.run_number }}
+          tag_name: r${{ github.run_number }}-${{ github.ref_name }}
           release_name: Build ${{ env.GITHUB_SHA_SHORT }}
           draft: false
           prerelease: true
 
   build:
+    name: Build for ${{ matrix.os_short }}
     needs: create_release
     runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-latest]
         target_arch: [x86, x86_64]
         include:
           - meta_branch: "1.12-dev"
             sm_branch: "1.12-dev"
+            spcomp_version: "1.12.7223"
+
+          - os: ubuntu-22.04
+            target_arch: x86
+            os_short: linux
+
+          - os: ubuntu-22.04
+            target_arch: x86_64
+            os_short: linux64
+
+          - os: windows-latest
+            target_arch: x86
+            os_short: win
+            vs_dev_arch: x86
+
+          - os: windows-latest
+            target_arch: x86_64
+            os_short: win64
+            vs_dev_arch: x64
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: src
+      - name: Prepare env
+        run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v4
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y clang g++-multilib
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v1.1
+
+      - name: Fetch Metamod
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ matrix.meta_branch }}
+          path: mmsource
+
+      - name: Fetch SourceMod
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.sm_branch }}
           path: sourcemod
           submodules: recursive
 
-      - uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/metamod-source
-          ref: ${{ matrix.meta_branch }}
-          path: mmsource
+      - name: Fetch HL2SDK
+        run: |
+          git clone https://github.com/alliedmodders/hl2sdk -b tf2 hl2sdk-tf2
 
-      - uses: actions/checkout@v4
+      # ✅ FIX: REQUIRED FOR AMBUILD
+      - name: Fetch HL2SDK Manifests
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk-manifests
           path: hl2sdk-manifests
 
-      - run: git clone https://github.com/alliedmodders/hl2sdk -b tf2 hl2sdk-tf2
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-      - uses: actions/setup-python@v4
+      - name: Setup spcomp
+        uses: rumblefrog/setup-sp@v1.2.4
+        with:
+          version: ${{ matrix.spcomp_version }}
 
-      - run: pip install git+https://github.com/alliedmodders/ambuild
+      - name: Install AMBuild
+        run: pip install git+https://github.com/alliedmodders/ambuild
 
-      # ✅ FIXED spcomp (Linux)
-      - name: Setup spcomp (Linux)
-        if: runner.os == 'Linux'
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          path: src
+
+      # ✅ gamedata fix
+      - name: Pre-create gamedata
+        working-directory: src
         run: |
-          curl -L https://sm.alliedmods.net/smdrop/1.12/sourcemod-latest-linux.tar.gz -o sm.tar.gz
-          tar -xzf sm.tar.gz
-          chmod +x addons/sourcemod/scripting/spcomp
-          echo "$(pwd)/addons/sourcemod/scripting" >> $GITHUB_PATH
+          printf '"Games"\n{\n}\n' > tf2.items.nosoop.txt
+          printf '"TF2Items"\n{\n}\n' > tf2.items.txt
 
-      # ✅ keep Windows normal
-      - name: Setup spcomp (Windows)
-        if: runner.os == 'Windows'
-        uses: rumblefrog/setup-sp@v1.2.2
+      # ✅ pawn fix
+      - name: Fix duplicate REQUIRE_EXTENSIONS
+        working-directory: src
+        run: |
+          sed -i '/#define REQUIRE_EXTENSIONS/d' pawn/tf2items_manager.sp || true
 
-      - run: |
-          printf '"Games"\n{\n}\n' > src/tf2.items.nosoop.txt
-          printf '"TF2Items"\n{\n}\n' > src/tf2.items.txt
-
-      - run: sed -i '/#define REQUIRE_EXTENSIONS/d' src/pawn/tf2items_manager.sp || true
-
-      - working-directory: src
+      - name: Build
+        working-directory: src
         run: |
           mkdir build && cd build
           python3 ../configure.py \
@@ -96,3 +144,15 @@ jobs:
             --hl2sdk-manifest-path="${{ github.workspace }}/hl2sdk-manifests" \
             --targets ${{ matrix.target_arch }}
           ambuild
+
+      - name: Fix package gamedata
+        working-directory: src/build
+        run: |
+          mkdir -p package/addons/sourcemod/gamedata
+          cp ../../tf2.items.nosoop.txt package/addons/sourcemod/gamedata/ || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os_short }}
+          path: src/build/package
