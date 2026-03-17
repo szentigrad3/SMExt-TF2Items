@@ -47,7 +47,7 @@ jobs:
         include:
           - meta_branch: "1.12-dev"
             sm_branch: "1.12-dev"
-            spcomp_version: "1.12.0"
+            spcomp_version: "1.2.4"
 
           - os: ubuntu-22.04
             target_arch: x86
