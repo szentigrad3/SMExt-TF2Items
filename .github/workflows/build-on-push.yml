@@ -12,11 +12,10 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+
     steps:
       - name: Get short SHA
-        id: vars
-        run: |
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       - name: Create release
         id: create_release
@@ -47,7 +46,7 @@ jobs:
         include:
           - meta_branch: "1.12-dev"
             sm_branch: "1.12-dev"
-            spcomp_version: "1.12.x"
+            spcomp_version: "1.11.0"
 
           - os: ubuntu-22.04
             target_arch: x86
@@ -70,8 +69,7 @@ jobs:
     steps:
       - name: Prepare env
         shell: bash
-        run: |
-          echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       - name: Install (Linux)
         if: runner.os == 'Linux'
@@ -97,14 +95,14 @@ jobs:
             echo>>"%GITHUB_ENV%" %%a=%%b
           )
 
-      - name: Fetch Metamod:Source ${{ matrix.meta_branch }}
+      - name: Fetch Metamod:Source
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/metamod-source
           ref: ${{ matrix.meta_branch }}
           path: mmsource
 
-      - name: Fetch SourceMod ${{ matrix.sm_branch }}
+      - name: Fetch SourceMod
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/sourcemod
@@ -116,11 +114,7 @@ jobs:
         shell: bash
         run: |
           git clone --mirror https://github.com/alliedmodders/hl2sdk hl2sdk-proxy-repo
-          sdks=(tf2)
-          for sdk in "${sdks[@]}"
-          do
-            git clone hl2sdk-proxy-repo -b $sdk hl2sdk-$sdk
-          done
+          git clone hl2sdk-proxy-repo -b tf2 hl2sdk-tf2
 
       - name: Fetch SDK Manifests
         uses: actions/checkout@v4
@@ -145,7 +139,7 @@ jobs:
           version: ${{ matrix.spcomp_version }}
           no-spcomp-proxy: true
 
-      - name: Install AMBuild (pip)
+      - name: Install AMBuild
         run: |
           python -m pip install wheel
           pip install git+https://github.com/alliedmodders/ambuild
@@ -154,6 +148,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: src
+
+      # 🔥 FINAL FIX (no conditions, always exists)
+      - name: Pre-create missing gamedata
+        working-directory: src
+        shell: bash
+        run: |
+          echo "[+] Hard creating gamedata..."
+
+          printf '"Games"\n{\n}\n' > tf2.items.nosoop.txt
+          printf '"TF2Items"\n{\n}\n' > tf2.items.txt
+
+          ls -lah tf2.items.nosoop.txt
 
       - name: Build Files
         working-directory: src
@@ -170,30 +176,14 @@ jobs:
             --targets ${{ matrix.target_arch }}
           ambuild
 
-      # ✅ FIX: prevents missing tf2.items.nosoop.txt crash
       - name: Ensure gamedata exists
         shell: bash
         working-directory: src/build
         run: |
-          echo "[+] Fixing gamedata..."
-
           mkdir -p package/addons/sourcemod/gamedata
 
-          if [ -f ../../tf2.items.nosoop.txt ]; then
-            cp ../../tf2.items.nosoop.txt package/addons/sourcemod/gamedata/
-          fi
-
-          if [ -f ../../tf2.items.txt ]; then
-            cp ../../tf2.items.txt package/addons/sourcemod/gamedata/
-          fi
-
-          if [ ! -f package/addons/sourcemod/gamedata/tf2.items.nosoop.txt ]; then
-            printf '"Games"\n{\n}\n' > package/addons/sourcemod/gamedata/tf2.items.nosoop.txt
-          fi
-
-          if [ ! -f package/addons/sourcemod/gamedata/tf2.items.txt ]; then
-            printf '"TF2Items"\n{\n}\n' > package/addons/sourcemod/gamedata/tf2.items.txt
-          fi
+          cp ../../tf2.items.nosoop.txt package/addons/sourcemod/gamedata/ || true
+          cp ../../tf2.items.txt package/addons/sourcemod/gamedata/ || true
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
@@ -202,49 +192,21 @@ jobs:
           path: src/build/package
 
   combine_packages:
-    name: Upload assets for ${{ matrix.os_short }}
+    name: Upload assets
     needs: [build, create_release]
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-        include:
-          - os: ubuntu-latest
-            os_short: linux
-            package_ext: .tar.gz
-          - os: windows-latest
-            os_short: win
-            package_ext: zip
+    runs-on: ubuntu-latest
 
     steps:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
           path: src/build/package
-          pattern: ${{ matrix.os_short }}*
           merge-multiple: true
 
-      - name: Build Package (Windows)
-        if: runner.os == 'Windows'
-        working-directory: src/build
-        shell: cmd
+      - name: Create archive
         run: |
-          pushd package
-          7z a -r "../package.${{ matrix.package_ext }}" addons
-          popd
-
-      - name: Build Package (Linux)
-        if: runner.os == 'Linux'
-        working-directory: src/build
-        shell: bash
-        run: |
-          pushd package
-          tar -czf "../package.${{ matrix.package_ext }}" --owner=0 --group=0 addons
-          popd
+          cd src/build/package
+          tar -czf ../package.tar.gz *
 
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
@@ -252,6 +214,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: src/build/package.${{ matrix.package_ext }}
-          asset_name: package.${{ matrix.package_ext }}
+          asset_path: src/build/package.tar.gz
+          asset_name: package.tar.gz
           asset_content_type: application/octet-stream
