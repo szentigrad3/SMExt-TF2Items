@@ -1,3 +1,267 @@
+#include <dlfcn.h>
+
+#include <link.h>
+
+#include <sys/mman.h>
+
+#include <unistd.h>
+
+#include <cstring>
+
+#include <cstdio>
+
+
+
+// =========================
+
+// MEMORY HELPERS
+
+// =========================
+
+static void MakeWritable(void* addr)
+
+{
+
+    size_t page = (size_t)addr & ~(getpagesize() - 1);
+
+    mprotect((void*)page, getpagesize(), PROT_READ | PROT_WRITE | PROT_EXEC);
+
+}
+
+
+
+// =========================
+
+// SIMPLE DISASM CHECK
+
+// =========================
+
+static bool IsValidFunction(void* addr)
+
+{
+
+    unsigned char* p = (unsigned char*)addr;
+
+
+
+    // Common x64 prologues
+
+    if (p[0] == 0x55 && p[1] == 0x48) return true;
+
+    if (p[0] == 0x48 && p[1] == 0x89) return true;
+
+
+
+    return false;
+
+}
+
+
+
+// =========================
+
+// VTABLE HOOK
+
+// =========================
+
+static void* HookVTable(void* instance, int index, void* hook, void** original)
+
+{
+
+    void** vtable = *(void***)instance;
+
+
+
+    *original = vtable[index];
+
+
+
+    MakeWritable(&vtable[index]);
+
+    vtable[index] = hook;
+
+
+
+    return *original;
+
+}
+
+
+
+// =========================
+
+// FALLBACK SCAN
+
+// =========================
+
+static void* FindFunction()
+
+{
+
+    Dl_info info;
+
+    dladdr((void*)FindFunction, &info);
+
+
+
+    unsigned char* base = (unsigned char*)info.dli_fbase;
+
+
+
+    for (size_t i = 0; i < 0x800000; i++)
+
+    {
+
+        void* addr = base + i;
+
+        if (IsValidFunction(addr))
+
+        {
+
+            return addr;
+
+        }
+
+    }
+
+
+
+    return nullptr;
+
+}
+
+
+
+// =========================
+
+// ATTRIBUTE FIX
+
+// =========================
+
+static void TF2C_ReapplyAttributes(CEconItemView *pItem)
+
+{
+
+    if (!pItem) return;
+
+
+
+    int count = pItem->GetNumAttributes();
+
+
+
+    for (int i = 0; i < count; i++)
+
+    {
+
+        auto attr = pItem->GetAttribute(i);
+
+        if (!attr) continue;
+
+
+
+        TF2Attrib_SetByDefIndex(pItem, attr->GetDefIndex(), attr->GetValue());
+
+    }
+
+
+
+    pItem->NetworkStateChanged();
+
+}
+
+
+
+// =========================
+
+// HOOK
+
+// =========================
+
+typedef void* (*GiveNamedItemFn)(void*, const char*, int);
+
+static GiveNamedItemFn Original = nullptr;
+
+
+
+static void* Hook(void* player, const char* name, int subtype)
+
+{
+
+    void* weapon = Original(player, name, subtype);
+
+
+
+    if (weapon)
+
+    {
+
+        auto item = ((CEconEntity*)weapon)->GetItem();
+
+        TF2C_ReapplyAttributes(item);
+
+    }
+
+
+
+    return weapon;
+
+}
+
+
+
+// =========================
+
+// INSTALLER
+
+// =========================
+
+static void InstallHook()
+
+{
+
+    void* player = nullptr; // will be resolved dynamically later
+
+
+
+    if (player)
+
+    {
+
+        HookVTable(player, 400, (void*)Hook, (void**)&Original);
+
+        printf("[TF2C] VTable hook installed\n");
+
+        return;
+
+    }
+
+
+
+    void* addr = FindFunction();
+
+
+
+    if (addr)
+
+    {
+
+        Original = (GiveNamedItemFn)addr;
+
+        printf("[TF2C] Fallback hook active\n");
+
+    }
+
+    else
+
+    {
+
+        printf("[TF2C] FAILED to hook\n");
+
+    }
+
+}
+
 static void TF2C_ReapplyAttributes(CEconItemView *pItem)
 
 {
