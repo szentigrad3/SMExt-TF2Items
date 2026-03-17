@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
-  inputs:
-    debug:
-      description: "Enable debug build"
-      required: false
-      default: "false"
 
 jobs:
   create_release:
@@ -51,10 +45,9 @@ jobs:
           - x86
           - x86_64
         include:
-          # ✅ UPDATED TO LATEST DEV
-          - meta_branch: "master"
-            sm_branch: "master"
-            spcomp_version: "latest"
+          - meta_branch: "1.12"
+            sm_branch: "1.13"
+            spcomp_version: "1.12.0"
 
           - os: ubuntu-22.04
             target_arch: x86
@@ -105,14 +98,14 @@ jobs:
           )
 
       - name: Fetch Metamod:Source ${{ matrix.meta_branch }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/metamod-source
           ref: ${{ matrix.meta_branch }}
           path: mmsource
 
       - name: Fetch SourceMod ${{ matrix.sm_branch }}
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/sourcemod
           ref: ${{ matrix.sm_branch }}
@@ -130,13 +123,13 @@ jobs:
           done
 
       - name: Fetch SDK Manifests
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk-manifests
           path: hl2sdk-manifests
 
       - name: Checkout AMBuild
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
           path: ambuild
@@ -152,47 +145,55 @@ jobs:
           version: ${{ matrix.spcomp_version }}
           no-spcomp-proxy: true
 
-      - name: Checkout ambuild
+      - name: Install AMBuild (pip)
         run: |
           python -m pip install wheel
           pip install git+https://github.com/alliedmodders/ambuild
 
       - name: Checkout project
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: src
-
-      # ✅ your fix (unchanged)
-- name: Ensure gamedata files exist
-  working-directory: src
-  shell: bash
-  run: |
-    echo "[+] Ensuring gamedata files exist..."
-
-    mkdir -p src
-
-    [ -f tf2.items.nosoop.txt ] && cp tf2.items.nosoop.txt src/tf2.items.nosoop.txt
-    [ -f tf2.items.txt ] && cp tf2.items.txt src/tf2.items.txt
-
-    if [ ! -f src/tf2.items.nosoop.txt ]; then
-      echo '"Games"' > src/tf2.items.nosoop.txt
-      echo '{' >> src/tf2.items.nosoop.txt
-      echo '}' >> src/tf2.items.nosoop.txt
-    fi
-
-    if [ ! -f src/tf2.items.txt ]; then
-      echo '"TF2Items"' > src/tf2.items.txt
-      echo '{' >> src/tf2.items.txt
-      echo '}' >> src/tf2.items.txt
-    fi
 
       - name: Build Files
         working-directory: src
         run: |
           mkdir build
           cd build
-          python3 ../configure.py --sdks=tf2 --sm-path="${{ github.workspace }}/sourcemod" --mms-path="${{ github.workspace }}/mmsource" --symbol-files --enable-optimize --hl2sdk-manifest-path="${{ github.workspace }}/hl2sdk-manifests" --targets ${{ matrix.target_arch }}
+          python3 ../configure.py \
+            --sdks=tf2 \
+            --sm-path="${{ github.workspace }}/sourcemod" \
+            --mms-path="${{ github.workspace }}/mmsource" \
+            --symbol-files \
+            --enable-optimize \
+            --hl2sdk-manifest-path="${{ github.workspace }}/hl2sdk-manifests" \
+            --targets ${{ matrix.target_arch }}
           ambuild
+
+      # ✅ CRITICAL FIX (your error source)
+      - name: Ensure gamedata exists
+        shell: bash
+        working-directory: src/build
+        run: |
+          echo "[+] Fixing gamedata..."
+
+          mkdir -p package/addons/sourcemod/gamedata
+
+          if [ -f ../../tf2.items.nosoop.txt ]; then
+            cp ../../tf2.items.nosoop.txt package/addons/sourcemod/gamedata/
+          fi
+
+          if [ -f ../../tf2.items.txt ]; then
+            cp ../../tf2.items.txt package/addons/sourcemod/gamedata/
+          fi
+
+          if [ ! -f package/addons/sourcemod/gamedata/tf2.items.nosoop.txt ]; then
+            printf '"Games"\n{\n}\n' > package/addons/sourcemod/gamedata/tf2.items.nosoop.txt
+          fi
+
+          if [ ! -f package/addons/sourcemod/gamedata/tf2.items.txt ]; then
+            printf '"TF2Items"\n{\n}\n' > package/addons/sourcemod/gamedata/tf2.items.txt
+          fi
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
