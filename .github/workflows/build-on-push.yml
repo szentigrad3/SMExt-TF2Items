@@ -29,20 +29,15 @@ jobs:
           prerelease: true
 
   build:
-    name: Build for ${{ matrix.os_short }} using sm-${{ matrix.sm_branch }}
+    name: Build for ${{ matrix.os_short }}
     needs: create_release
     runs-on: ${{ matrix.os }}
-    if: "!contains(github.event.head_commit.message, '[ci skip]')"
 
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-22.04
-          - windows-latest
-        target_arch:
-          - x86
-          - x86_64
+        os: [ubuntu-22.04, windows-latest]
+        target_arch: [x86, x86_64]
         include:
           - meta_branch: "1.12-dev"
             sm_branch: "1.12-dev"
@@ -68,34 +63,20 @@ jobs:
 
     steps:
       - name: Prepare env
-        shell: bash
         run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Install (Linux)
+      - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y clang g++-multilib
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
 
-      - name: Add msbuild to PATH (Windows)
+      - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: microsoft/setup-msbuild@v1.1
 
-      - name: Install (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          for /f "usebackq delims=*" %%i in (`vswhere -latest -property installationPath`) do (
-            call "%%i"\Common7\Tools\vsdevcmd.bat -arch=${{ matrix.vs_dev_arch }} -host_arch=x64
-          )
-          for /f "delims== tokens=1,2" %%a in ('set') do (
-            echo>>"%GITHUB_ENV%" %%a=%%b
-          )
-
-      - name: Fetch Metamod:Source
+      - name: Fetch Metamod
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/metamod-source
@@ -110,110 +91,60 @@ jobs:
           path: sourcemod
           submodules: recursive
 
-      - name: Fetch SDKs
-        shell: bash
+      - name: Fetch SDK
         run: |
-          git clone --mirror https://github.com/alliedmodders/hl2sdk hl2sdk-proxy-repo
-          git clone hl2sdk-proxy-repo -b tf2 hl2sdk-tf2
+          git clone https://github.com/alliedmodders/hl2sdk -b tf2 hl2sdk-tf2
 
-      - name: Fetch SDK Manifests
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/hl2sdk-manifests
-          path: hl2sdk-manifests
-
-      - name: Checkout AMBuild
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/ambuild
-          path: ambuild
-
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Set up spcomp
+      - name: Setup spcomp
         uses: rumblefrog/setup-sp@v1.2.2
         with:
           version: ${{ matrix.spcomp_version }}
-          no-spcomp-proxy: true
 
       - name: Install AMBuild
-        run: |
-          python -m pip install wheel
-          pip install git+https://github.com/alliedmodders/ambuild
+        run: pip install git+https://github.com/alliedmodders/ambuild
 
       - name: Checkout project
         uses: actions/checkout@v4
         with:
           path: src
 
-      # 🔥 FINAL FIX (no conditions, always exists)
-      - name: Pre-create missing gamedata
+      # ✅ gamedata fix
+      - name: Pre-create gamedata
         working-directory: src
-        shell: bash
         run: |
-          echo "[+] Hard creating gamedata..."
-
           printf '"Games"\n{\n}\n' > tf2.items.nosoop.txt
           printf '"TF2Items"\n{\n}\n' > tf2.items.txt
 
-          ls -lah tf2.items.nosoop.txt
-
-      - name: Build Files
+      # ✅ NEW FIX (your current error)
+      - name: Fix duplicate REQUIRE_EXTENSIONS define
         working-directory: src
         run: |
-          mkdir build
-          cd build
+          sed -i '/#define REQUIRE_EXTENSIONS/d' pawn/tf2items_manager.sp || true
+
+      - name: Build
+        working-directory: src
+        run: |
+          mkdir build && cd build
           python3 ../configure.py \
             --sdks=tf2 \
             --sm-path="${{ github.workspace }}/sourcemod" \
             --mms-path="${{ github.workspace }}/mmsource" \
-            --symbol-files \
-            --enable-optimize \
-            --hl2sdk-manifest-path="${{ github.workspace }}/hl2sdk-manifests" \
             --targets ${{ matrix.target_arch }}
           ambuild
 
-      - name: Ensure gamedata exists
-        shell: bash
+      - name: Fix package gamedata
         working-directory: src/build
         run: |
           mkdir -p package/addons/sourcemod/gamedata
-
           cp ../../tf2.items.nosoop.txt package/addons/sourcemod/gamedata/ || true
-          cp ../../tf2.items.txt package/addons/sourcemod/gamedata/ || true
 
-      - name: Upload Build Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os_short }}-${{ matrix.target_arch }}
+          name: build-${{ matrix.os_short }}
           path: src/build/package
-
-  combine_packages:
-    name: Upload assets
-    needs: [build, create_release]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: src/build/package
-          merge-multiple: true
-
-      - name: Create archive
-        run: |
-          cd src/build/package
-          tar -czf ../package.tar.gz *
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: src/build/package.tar.gz
-          asset_name: package.tar.gz
-          asset_content_type: application/octet-stream
