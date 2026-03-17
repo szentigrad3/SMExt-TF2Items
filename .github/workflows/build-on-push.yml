@@ -91,9 +91,16 @@ jobs:
           path: sourcemod
           submodules: recursive
 
-      - name: Fetch SDK
+      - name: Fetch HL2SDK
         run: |
           git clone https://github.com/alliedmodders/hl2sdk -b tf2 hl2sdk-tf2
+
+      # ✅ FIX: REQUIRED FOR AMBUILD
+      - name: Fetch HL2SDK Manifests
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk-manifests
+          path: hl2sdk-manifests
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -120,8 +127,8 @@ jobs:
           printf '"Games"\n{\n}\n' > tf2.items.nosoop.txt
           printf '"TF2Items"\n{\n}\n' > tf2.items.txt
 
-      # ✅ NEW FIX (your current error)
-      - name: Fix duplicate REQUIRE_EXTENSIONS define
+      # ✅ pawn fix
+      - name: Fix duplicate REQUIRE_EXTENSIONS
         working-directory: src
         run: |
           sed -i '/#define REQUIRE_EXTENSIONS/d' pawn/tf2items_manager.sp || true
@@ -134,6 +141,7 @@ jobs:
             --sdks=tf2 \
             --sm-path="${{ github.workspace }}/sourcemod" \
             --mms-path="${{ github.workspace }}/mmsource" \
+            --hl2sdk-manifest-path="${{ github.workspace }}/hl2sdk-manifests" \
             --targets ${{ matrix.target_arch }}
           ambuild
 
