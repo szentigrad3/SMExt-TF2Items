@@ -1,3 +1,67 @@
+// TF2C COMPAT LAYER
+
+static ConVar tf2items_tf2c_fix(
+
+    "tf2items_tf2c_fix",
+
+    "1",
+
+    FCVAR_NOTIFY,
+
+    "Ensure attributes apply correctly in TF2 Classified"
+
+);
+
+
+
+static void TF2C_ReapplyAttributes(CEconItemView *pItem)
+
+{
+
+    if (!pItem) return;
+
+    int count = pItem->GetNumAttributes();
+
+    for (int i = 0; i < count; i++)
+
+    {
+
+        auto attr = pItem->GetAttribute(i);
+
+        if (!attr) continue;
+
+        int def = attr->GetDefIndex();
+
+        float val = attr->GetValue();
+
+        if (def <= 0 || def > 5000) continue;
+
+        TF2Attrib_SetByDefIndex(pItem, def, val);
+
+    }
+
+}
+
+
+
+bool TryResolveGiveNamedItem()
+
+{
+
+    if (g_pGameConf->TryResolveGiveNamedItem())
+
+    if (g_pGameConf->GetMemSig("linux", (void**)&g_pGiveNamedItem)) return true;
+
+    if (g_pGameConf->GetMemSig("linux_alt", (void**)&g_pGiveNamedItem)) return true;
+
+    if (g_pGameConf->GetMemSig("sig_alt1", (void**)&g_pGiveNamedItem)) return true;
+
+    if (g_pGameConf->GetMemSig("sig_alt2", (void**)&g_pGiveNamedItem)) return true;
+
+    return false;
+
+}
+
 /*
  * ================================================================================
  * TF2 Items Extension

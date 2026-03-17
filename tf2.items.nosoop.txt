@@ -4,12 +4,6 @@
 	{
 		"Offsets"
 		{
-			"GiveNamedItem"
-			{
-				// offset copy here just so it doesn't get stomped by SM autoupdate
-				"windows64"	"487"
-				"linux64"	"494"
-			}
 		}
 		"Signatures"
 		{
