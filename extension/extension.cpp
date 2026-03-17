@@ -514,7 +514,7 @@ bool TF2Items::SDK_OnLoad(char *error, size_t maxlen, bool late) {
 		{
 			snprintf(error, maxlen, "Could not read tf2.items.txt: %s\n", conf_error);
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 
 	if (!gameconfs->LoadGameConfigFile("tf2.items.nosoop", &g_pSecondaryGameConf, conf_error, sizeof(conf_error)))
@@ -523,14 +523,14 @@ bool TF2Items::SDK_OnLoad(char *error, size_t maxlen, bool late) {
 		{
 			snprintf(error, maxlen, "Could not read tf2.items.txt: %s\n", conf_error);
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 
 	int iOffset;
 	if (!g_pGameConf->GetOffset("GiveNamedItem", &iOffset) && !g_pSecondaryGameConf->GetOffset("GiveNamedItem", &iOffset))
 	{
 		snprintf(error, maxlen, "Could not find offset for GiveNamedItem");
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	} else {
 		SH_MANUALHOOK_RECONFIGURE(MHook_GiveNamedItem, iOffset, 0, 0);
 		g_pSM->LogMessage(myself, "\"GiveNamedItem\" offset = %d", iOffset);

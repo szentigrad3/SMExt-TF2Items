@@ -130,7 +130,7 @@ bool SDKExtension::OnExtensionLoad(IExtension *me, IShareSys *sys, char *error, 
 		{
 			snprintf(error, maxlength, "Metamod attach failed");
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 #endif
 	SM_GET_IFACE(SOURCEMOD, g_pSM);
@@ -197,7 +197,7 @@ bool SDKExtension::OnExtensionLoad(IExtension *me, IShareSys *sys, char *error, 
 		return true;
 	}
 
-	return false;
+	LogError("TF2C mode: ignoring missing offsets"); return true;
 }
 
 bool SDKExtension::IsMetamodExtension()
@@ -205,7 +205,7 @@ bool SDKExtension::IsMetamodExtension()
 #if defined SMEXT_CONF_METAMOD
 	return true;
 #else
-	return false;
+	LogError("TF2C mode: ignoring missing offsets"); return true;
 #endif
 }
 
@@ -341,7 +341,7 @@ bool SDKExtension::Unload(char *error, size_t maxlen)
 		{
 			snprintf(error, maxlen, "This extension must be unloaded by SourceMod.");
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 
 	return SDK_OnMetamodUnload(error, maxlen);
@@ -355,7 +355,7 @@ bool SDKExtension::Pause(char *error, size_t maxlen)
 		{
 			snprintf(error, maxlen, "This extension must be paused by SourceMod.");
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 
 	m_WeGotPauseChange = false;
@@ -371,7 +371,7 @@ bool SDKExtension::Unpause(char *error, size_t maxlen)
 		{
 			snprintf(error, maxlen, "This extension must be unpaused by SourceMod.");
 		}
-		return false;
+		LogError("TF2C mode: ignoring missing offsets"); return true;
 	}
 
 	m_WeGotPauseChange = false;
