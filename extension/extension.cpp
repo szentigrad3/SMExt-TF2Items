@@ -1,3 +1,149 @@
+static void TF2C_ReapplyAttributes(CEconItemView *pItem)
+
+{
+
+    if (!pItem) return;
+
+
+
+    int count = pItem->GetNumAttributes();
+
+
+
+    for (int i = 0; i < count; i++)
+
+    {
+
+        auto attr = pItem->GetAttribute(i);
+
+        if (!attr) continue;
+
+
+
+        TF2Attrib_SetByDefIndex(pItem, attr->GetDefIndex(), attr->GetValue());
+
+    }
+
+
+
+    pItem->NetworkStateChanged();
+
+}
+
+#include <link.h>
+
+#include <cstring>
+
+
+
+static void* FindPattern(const char* pattern, const char* mask)
+
+{
+
+    Dl_info info;
+
+    dladdr((void*)FindPattern, &info);
+
+
+
+    unsigned char* base = (unsigned char*)info.dli_fbase;
+
+    size_t size = 0x500000; // scan range
+
+
+
+    for (size_t i = 0; i < size; i++)
+
+    {
+
+        bool found = true;
+
+        for (size_t j = 0; mask[j]; j++)
+
+        {
+
+            if (mask[j] != ? && pattern[j] != *(char*)(base + i + j))
+
+            {
+
+                found = false;
+
+                break;
+
+            }
+
+        }
+
+        if (found)
+
+            return (void*)(base + i);
+
+    }
+
+
+
+    return nullptr;
+
+}
+
+
+
+static void* ResolveGiveNamedItem()
+
+{
+
+    // Pattern variants (TF2C safe)
+
+    const char* patterns[] = {
+
+        "\x55\x48\x89\xE5\x41\x57\x41\x56",
+
+        "\x48\x89\x5C\x24\x08\x57\x48\x83",
+
+        "\x55\x48\x8B\xEC\x48\x83\xEC"
+
+    };
+
+
+
+    const char* masks[] = {
+
+        "xxxxxxxx",
+
+        "xxxxxxxx",
+
+        "xxxxxxx"
+
+    };
+
+
+
+    for (int i = 0; i < 3; i++)
+
+    {
+
+        void* addr = FindPattern(patterns[i], masks[i]);
+
+        if (addr)
+
+        {
+
+            printf("[TF2C] Found GiveNamedItem via pattern %d\n", i);
+
+            return addr;
+
+        }
+
+    }
+
+
+
+    printf("[TF2C] FAILED to find GiveNamedItem\n");
+
+    return nullptr;
+
+}
+
 // TF2C COMPAT LAYER
 
 static ConVar tf2items_tf2c_fix(
@@ -50,13 +196,13 @@ bool TryResolveGiveNamedItem()
 
     if (g_pGameConf->TryResolveGiveNamedItem())
 
-    if (g_pGameConf->GetMemSig("linux", (void**)&g_pGiveNamedItem)) return true;
+    if (g_pGameConf->ResolveGiveNamedItem()&g_pGiveNamedItem)) return true;
 
-    if (g_pGameConf->GetMemSig("linux_alt", (void**)&g_pGiveNamedItem)) return true;
+    if (g_pGameConf->ResolveGiveNamedItem()&g_pGiveNamedItem)) return true;
 
-    if (g_pGameConf->GetMemSig("sig_alt1", (void**)&g_pGiveNamedItem)) return true;
+    if (g_pGameConf->ResolveGiveNamedItem()&g_pGiveNamedItem)) return true;
 
-    if (g_pGameConf->GetMemSig("sig_alt2", (void**)&g_pGiveNamedItem)) return true;
+    if (g_pGameConf->ResolveGiveNamedItem()&g_pGiveNamedItem)) return true;
 
     return false;
 
